@@ -128,6 +128,12 @@ def update_message_backend(request: HttpRequest, user_profile: UserMessage,
     else:
         raise JsonableError(_("You don't have permission to edit this message"))
 
+    # Disallow editing of messages in deactivated streams unless you are an admin.
+    if message.is_stream_message() and not user_profile.is_realm_admin:
+        message_stream = get_stream_by_id(message.recipient.type_id)
+        if message_stream.deactivated:
+            return json_error(_("Messages in deactivated streams cannot be edited"))
+
     # If there is a change to the content, check that it hasn't been too long
     # Allow an extra 20 seconds since we potentially allow editing 15 seconds
     # past the limit, and in case there are network issues, etc. The 15 comes
@@ -229,6 +235,11 @@ def validate_can_delete_message(user_profile: UserProfile, message: Message) -> 
     if not user_profile.realm.allow_message_deleting:
         # User can not delete message, if message deleting is not allowed in realm.
         raise JsonableError(_("You don't have permission to delete this message"))
+    if message.is_stream_message():
+        message_stream = get_stream_by_id(message.recipient.type_id)
+        if message_stream.deactivated:
+            # Users can not delete messages in deactivated streams.
+            raise JsonableError(_("Messages in deactivated streams cannot be deleted"))
 
     deadline_seconds = user_profile.realm.message_content_delete_limit_seconds
     if deadline_seconds == 0:

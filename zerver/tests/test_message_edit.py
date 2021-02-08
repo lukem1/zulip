@@ -8,6 +8,7 @@ from django.db import IntegrityError
 from django.http import HttpResponse
 
 from zerver.lib.actions import (
+    do_deactivate_stream,
     do_set_realm_property,
     do_update_message,
     get_topic_messages,
@@ -192,6 +193,21 @@ class EditMessageTest(ZulipTestCase):
             'content': 'content after edit',
         })
         self.assert_json_error(result, "You don't have permission to edit this message")
+
+    def test_edit_message_deactivated_stream(self) -> None:
+        self.login('hamlet')
+        hamlet = self.example_user("hamlet")
+        stream = self.make_stream("toDeactivate")
+        self.subscribe(hamlet, stream.name)
+        msg_id = self.send_stream_message(hamlet, stream.name)
+        do_deactivate_stream(stream)
+
+        result = self.client_patch("/json/messages/" + str(msg_id), {
+            'message_id': msg_id,
+            'content': 'content after edit',
+        })
+
+        self.assert_json_error(result, "Messages in deactivated streams cannot be edited")
 
     def test_edit_message_no_changes(self) -> None:
         self.login('hamlet')
@@ -1281,6 +1297,22 @@ class DeleteMessageTest(ZulipTestCase):
         self.assert_json_error(result, "You don't have permission to delete this message")
 
         result = test_delete_message_by_owner(msg_id=msg_id)
+        self.assert_json_success(result)
+
+        # Test if message is in deactivated stream.
+        stream = self.make_stream("toDeactivate")
+        iago = self.example_user("iago")
+        self.subscribe(iago, stream.name)
+        self.subscribe(hamlet, stream.name)
+        msg_id = self.send_stream_message(hamlet, stream.name)
+        do_deactivate_stream(stream)
+
+        # Regular user
+        result = test_delete_message_by_owner(msg_id)
+        self.assert_json_error(result, "Messages in deactivated streams cannot be deleted")
+
+        # Admin
+        result = test_delete_message_by_admin(msg_id)
         self.assert_json_success(result)
 
         # Test if time limit is non-zero.
