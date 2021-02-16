@@ -4,6 +4,7 @@ from unittest import mock
 
 from django.utils.timezone import now as timezone_now
 
+from zerver.lib.actions import do_deactivate_stream
 from zerver.lib.stream_topic import StreamTopicTarget
 from zerver.lib.test_classes import ZulipTestCase
 from zerver.lib.topic_mutes import (
@@ -84,6 +85,26 @@ class MutedTopicsTests(ZulipTestCase):
                 stream_id=stream.id,
                 topic_name="Verona3",
             )
+
+    def test_get_deactivated_muted_topic(self) -> None:
+        user = self.example_user("hamlet")
+        self.login_user(user)
+
+        stream = get_stream("Verona", user.realm)
+        recipient = stream.recipient
+
+        add_topic_mute(
+            user_profile=user,
+            stream_id=stream.id,
+            recipient_id=recipient.id,
+            topic_name="Verona3",
+            date_muted=datetime(2020, 1, 1, tzinfo=timezone.utc),
+        )
+
+        do_deactivate_stream(stream)
+
+        self.assertTrue(len(get_topic_mutes(user)) == 0)
+        self.assertTrue(len(get_topic_mutes(user, True)) == 1)
 
     def test_remove_muted_topic(self) -> None:
         user = self.example_user("hamlet")
