@@ -9,8 +9,15 @@ from zerver.lib.topic import topic_match_sa
 from zerver.models import MutedTopic, UserProfile, get_stream
 
 
-def get_topic_mutes(user_profile: UserProfile) -> List[Tuple[str, str, float]]:
-    rows = MutedTopic.objects.filter(user_profile=user_profile).values(
+def get_topic_mutes(
+    user_profile: UserProfile, include_deactivated: bool = False
+) -> List[Tuple[str, str, float]]:
+    query = MutedTopic.objects.filter(user_profile=user_profile)
+    # Exclude muted topics that are part of deactivated streams unless
+    # explicitly requested.
+    if not include_deactivated:
+        query = query.filter(stream__deactivated=False)
+    rows = query.values(
         "stream__name",
         "topic_name",
         "date_muted",
@@ -91,7 +98,9 @@ def exclude_topic_mutes(
     query = MutedTopic.objects.filter(
         user_profile=user_profile,
     )
-
+    # Note: Unlike get_topic_mutes, here we always want to
+    # consider topics in deactivated streams, so they are
+    # never filtered from the query in this method.
     if stream_id is not None:
         # If we are narrowed to a stream, we can optimize the query
         # by not considering topic mutes outside the stream.
